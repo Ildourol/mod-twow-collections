@@ -1,0 +1,9 @@
+## Interface: 11200
+## Title: Turtle Collections
+## Notes: Account-Wide Vanity Toybox, Mounts & Pets Browser for Turtle WoW
+## Author: Turtle WoW Module Ecosystem
+## Version: 1.0.0
+## SavedVariables: TurtleCollectionsDB
+Turtle_Collections_Data.lua
+Turtle_Collections.lua
+Turtle_Collections.xml

@@ -1,0 +1,35 @@
+# Workspace, agent, testing, and internal verification files (Local Only - Never Push to GitHub)
+AGENTS.md
+.agents/
+tests/
+t/
+test_*
+docs/
+!docs/images/
+!docs/images/**
+
+# Build artifacts and binaries
+build*/
+bin/
+*.obj
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.lib
+*.a
+*.exp
+*.log
+
+# IDE and Editor files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.VC.db
+
+# OS files
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store

@@ -1,0 +1,71 @@
+[CollectionsConf]
+###################################################################################################
+# TURTLE WOW CUSTOM VMANGOS MODULE: mod-twow-collections
+# Account-Wide Vanity Toybox, Mounts & Pets Collection System
+###################################################################################################
+
+# Enable or disable the collections module entirely.
+# Default: 1 (Enabled)
+Collections.Enable = 1
+
+# Enable Account-Wide Mount Sharing across all characters on the account.
+# Default: 1 (Enabled)
+Collections.AccountWide.Mounts = 1
+
+# Enable Account-Wide Vanity / Companion Pet Sharing across all characters on the account.
+# Default: 1 (Enabled)
+Collections.AccountWide.Pets = 1
+
+# Enable Account-Wide Novelty Toy Sharing across all characters on the account.
+# Default: 1 (Enabled)
+Collections.AccountWide.Toys = 1
+
+# Automatically teach unlocked account mounts upon character login once prerequisites are met.
+# (If enabled, characters on the account learn eligible mount spells into spellbook when meeting level and riding skill).
+# Default: 1 (Enabled)
+Collections.Mounts.AutoLearnOnLogin = 1
+
+# Allow low-level characters to view all unlocked account mounts in the collection browser.
+# 1 = Show unlocked account mounts in browser to low-level characters (Default)
+# 0 = Only display mounts the current character meets level requirements to ride
+# Default: 1
+Collections.Mounts.ShowToLowLevel = 1
+
+# Check level requirements before allowing a character to summon / ride mounts.
+# (e.g. Level 40 for 60% mounts, Level 60 for 100% epic mounts)
+# 1 = Enforce level: low level characters cannot summon/ride mount until reaching required level (Default)
+# 0 = Allow summoning/riding mounts at any level (e.g. level 1 characters can still use the mounts)
+# Default: 1
+Collections.Mounts.EnforceLevelRequirements = 1
+
+# Check riding skill requirements before allowing a character to summon / ride mounts.
+# 1 = Enforce riding skill: characters cannot summon/ride mounts until learning required riding skill from trainer (Default)
+# 0 = Allow summoning/riding mounts without purchasing riding skill (e.g. level 1 characters can still use the mounts)
+# Default: 1
+Collections.Mounts.EnforceRidingSkill = 1
+
+# Automatically teach unlocked account companion pets upon character login.
+# Default: 1 (Enabled)
+Collections.Pets.AutoLearnOnLogin = 1
+
+# Automatically teach unlocked account toys upon character login.
+# Default: 1 (Enabled)
+Collections.Toys.AutoLearnOnLogin = 1
+
+# Consume physical inventory item when successfully registered to collection.
+# 1 = Destroy physical item to save bag space
+# 0 = Keep physical item in bag
+# Default: 1
+Collections.ConsumeItemOnLearn = 1
+
+# Send affirmative chat notification when a collection item is learned.
+# Default: 1 (Enabled)
+Collections.AnnounceOnLearn = 1
+
+# Enable critter petting scoring table (tw_char.character_critter_pet).
+# Default: 1 (Enabled)
+Collections.CritterPets.Enable = 1
+
+# Enable verbose module console logging.
+# Default: 1 (Enabled)
+Collections.Logging = 1

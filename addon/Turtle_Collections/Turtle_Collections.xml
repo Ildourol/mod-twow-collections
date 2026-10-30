@@ -1,0 +1,238 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
+
+    <!-- Compact Row Template (388 x 28) with Action Button -->
+    <Button name="TurtleCollectionsRowTemplate" virtual="true">
+        <Size>
+            <AbsDimension x="388" y="28"/>
+        </Size>
+        <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
+            <EdgeSize><AbsValue val="10"/></EdgeSize>
+            <TileSize><AbsValue val="10"/></TileSize>
+            <BackgroundInsets><AbsInset left="2" right="2" top="2" bottom="2"/></BackgroundInsets>
+        </Backdrop>
+        <Layers>
+            <Layer level="ARTWORK">
+                <Texture name="$parentIcon">
+                    <Size><AbsDimension x="22" y="22"/></Size>
+                    <Anchors>
+                        <Anchor point="LEFT"><Offset><AbsDimension x="4" y="0"/></Offset></Anchor>
+                    </Anchors>
+                </Texture>
+                <FontString name="$parentName" inherits="GameFontNormal" justifyH="LEFT">
+                    <Size><AbsDimension x="200" y="18"/></Size>
+                    <Anchors>
+                        <Anchor point="LEFT" relativeTo="$parentIcon" relativePoint="RIGHT">
+                            <Offset><AbsDimension x="6" y="0"/></Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+                <FontString name="$parentStatus" inherits="GameFontHighlightSmall" justifyH="RIGHT">
+                    <Size><AbsDimension x="95" y="18"/></Size>
+                    <Anchors>
+                        <Anchor point="RIGHT" relativeTo="$parentAction" relativePoint="LEFT">
+                            <Offset><AbsDimension x="-4" y="0"/></Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+            </Layer>
+        </Layers>
+        <Frames>
+            <Button name="$parentAction" inherits="UIPanelButtonTemplate" text="Use">
+                <Size><AbsDimension x="50" y="20"/></Size>
+                <Anchors>
+                    <Anchor point="RIGHT"><Offset><AbsDimension x="-4" y="0"/></Offset></Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>
+                        TurtleCollections_OnRowAction(this:GetParent():GetID())
+                    </OnClick>
+                </Scripts>
+            </Button>
+        </Frames>
+        <Scripts>
+            <OnLoad>
+                this:SetBackdropColor(0.1, 0.1, 0.12, 0.75)
+            </OnLoad>
+            <OnClick>
+                TurtleCollections_OnRowClick(this:GetID())
+            </OnClick>
+            <OnEnter>
+                TurtleCollections_OnRowEnter(this:GetID())
+            </OnEnter>
+            <OnLeave>
+                TurtleCollections_OnRowLeave()
+            </OnLeave>
+        </Scripts>
+    </Button>
+
+    <!-- Master Collections Frame (Compact 420 x 420) -->
+    <Frame name="TurtleCollectionsFrame" toplevel="true" movable="true" enableMouse="true" hidden="true" parent="UIParent">
+        <Size><AbsDimension x="420" y="420"/></Size>
+        <Anchors>
+            <Anchor point="CENTER"><Offset><AbsDimension x="0" y="0"/></Offset></Anchor>
+        </Anchors>
+        <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
+            <EdgeSize><AbsValue val="14"/></EdgeSize>
+            <TileSize><AbsValue val="14"/></TileSize>
+            <BackgroundInsets><AbsInset left="3" right="3" top="3" bottom="3"/></BackgroundInsets>
+        </Backdrop>
+        <Layers>
+            <Layer level="ARTWORK">
+                <FontString name="TurtleCollectionsFrameTitle" inherits="GameFontNormalLarge" text="Account Collections">
+                    <Anchors>
+                        <Anchor point="TOP"><Offset><AbsDimension x="0" y="-12"/></Offset></Anchor>
+                    </Anchors>
+                </FontString>
+                <FontString name="TurtleCollectionsFramePageText" inherits="GameFontNormal" text="Page 1 / 1">
+                    <Anchors>
+                        <Anchor point="BOTTOM"><Offset><AbsDimension x="0" y="15"/></Offset></Anchor>
+                    </Anchors>
+                </FontString>
+            </Layer>
+        </Layers>
+        <Frames>
+            <!-- Close Button -->
+            <Button name="TurtleCollectionsCloseButton" inherits="UIPanelCloseButton">
+                <Anchors>
+                    <Anchor point="TOPRIGHT"><Offset><AbsDimension x="-3" y="-3"/></Offset></Anchor>
+                </Anchors>
+            </Button>
+
+            <!-- Search EditBox -->
+            <EditBox name="TurtleCollectionsSearchBox" autoFocus="false" inherits="InputBoxTemplate">
+                <Size><AbsDimension x="130" y="20"/></Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT"><Offset><AbsDimension x="20" y="-36"/></Offset></Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnTextChanged>
+                        TurtleCollections_OnSearchChanged(this:GetText())
+                    </OnTextChanged>
+                    <OnEscapePressed>
+                        this:ClearFocus()
+                    </OnEscapePressed>
+                </Scripts>
+            </EditBox>
+
+            <!-- Compact Category Tabs: Mounts, Pets, Toys -->
+            <Button name="TurtleCollectionsTabMounts" inherits="UIPanelButtonTemplate" text="Mounts">
+                <Size><AbsDimension x="65" y="20"/></Size>
+                <Anchors>
+                    <Anchor point="TOPRIGHT"><Offset><AbsDimension x="-142" y="-36"/></Offset></Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>TurtleCollections_SetTab(1)</OnClick>
+                </Scripts>
+            </Button>
+
+            <Button name="TurtleCollectionsTabPets" inherits="UIPanelButtonTemplate" text="Pets">
+                <Size><AbsDimension x="55" y="20"/></Size>
+                <Anchors>
+                    <Anchor point="LEFT" relativeTo="TurtleCollectionsTabMounts" relativePoint="RIGHT">
+                        <Offset><AbsDimension x="4" y="0"/></Offset>
+                    </Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>TurtleCollections_SetTab(2)</OnClick>
+                </Scripts>
+            </Button>
+
+            <Button name="TurtleCollectionsTabToys" inherits="UIPanelButtonTemplate" text="Toys">
+                <Size><AbsDimension x="55" y="20"/></Size>
+                <Anchors>
+                    <Anchor point="LEFT" relativeTo="TurtleCollectionsTabPets" relativePoint="RIGHT">
+                        <Offset><AbsDimension x="4" y="0"/></Offset>
+                    </Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>TurtleCollections_SetTab(3)</OnClick>
+                </Scripts>
+            </Button>
+
+            <!-- Rows 1 to 10 (Compact 28px height with 3px spacing) -->
+            <Button name="TurtleCollectionsRow1" inherits="TurtleCollectionsRowTemplate" id="1">
+                <Anchors>
+                    <Anchor point="TOPLEFT"><Offset><AbsDimension x="16" y="-64"/></Offset></Anchor>
+                </Anchors>
+            </Button>
+            <Button name="TurtleCollectionsRow2" inherits="TurtleCollectionsRowTemplate" id="2">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="TurtleCollectionsRow1" relativePoint="BOTTOMLEFT"><Offset><AbsDimension x="0" y="-3"/></Offset></Anchor>
+                </Anchors>
+            </Button>
+            <Button name="TurtleCollectionsRow3" inherits="TurtleCollectionsRowTemplate" id="3">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="TurtleCollectionsRow2" relativePoint="BOTTOMLEFT"><Offset><AbsDimension x="0" y="-3"/></Offset></Anchor>
+                </Anchors>
+            </Button>
+            <Button name="TurtleCollectionsRow4" inherits="TurtleCollectionsRowTemplate" id="4">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="TurtleCollectionsRow3" relativePoint="BOTTOMLEFT"><Offset><AbsDimension x="0" y="-3"/></Offset></Anchor>
+                </Anchors>
+            </Button>
+            <Button name="TurtleCollectionsRow5" inherits="TurtleCollectionsRowTemplate" id="5">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="TurtleCollectionsRow4" relativePoint="BOTTOMLEFT"><Offset><AbsDimension x="0" y="-3"/></Offset></Anchor>
+                </Anchors>
+            </Button>
+            <Button name="TurtleCollectionsRow6" inherits="TurtleCollectionsRowTemplate" id="6">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="TurtleCollectionsRow5" relativePoint="BOTTOMLEFT"><Offset><AbsDimension x="0" y="-3"/></Offset></Anchor>
+                </Anchors>
+            </Button>
+            <Button name="TurtleCollectionsRow7" inherits="TurtleCollectionsRowTemplate" id="7">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="TurtleCollectionsRow6" relativePoint="BOTTOMLEFT"><Offset><AbsDimension x="0" y="-3"/></Offset></Anchor>
+                </Anchors>
+            </Button>
+            <Button name="TurtleCollectionsRow8" inherits="TurtleCollectionsRowTemplate" id="8">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="TurtleCollectionsRow7" relativePoint="BOTTOMLEFT"><Offset><AbsDimension x="0" y="-3"/></Offset></Anchor>
+                </Anchors>
+            </Button>
+            <Button name="TurtleCollectionsRow9" inherits="TurtleCollectionsRowTemplate" id="9">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="TurtleCollectionsRow8" relativePoint="BOTTOMLEFT"><Offset><AbsDimension x="0" y="-3"/></Offset></Anchor>
+                </Anchors>
+            </Button>
+            <Button name="TurtleCollectionsRow10" inherits="TurtleCollectionsRowTemplate" id="10">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="TurtleCollectionsRow9" relativePoint="BOTTOMLEFT"><Offset><AbsDimension x="0" y="-3"/></Offset></Anchor>
+                </Anchors>
+            </Button>
+
+            <!-- Prev / Next Page Buttons -->
+            <Button name="TurtleCollectionsPrevButton" inherits="UIPanelButtonTemplate" text="Previous">
+                <Size><AbsDimension x="70" y="20"/></Size>
+                <Anchors>
+                    <Anchor point="BOTTOMLEFT"><Offset><AbsDimension x="16" y="12"/></Offset></Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>TurtleCollections_PrevPage()</OnClick>
+                </Scripts>
+            </Button>
+
+            <Button name="TurtleCollectionsNextButton" inherits="UIPanelButtonTemplate" text="Next">
+                <Size><AbsDimension x="70" y="20"/></Size>
+                <Anchors>
+                    <Anchor point="BOTTOMRIGHT"><Offset><AbsDimension x="-16" y="12"/></Offset></Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>TurtleCollections_NextPage()</OnClick>
+                </Scripts>
+            </Button>
+        </Frames>
+        <Scripts>
+            <OnLoad>
+                this:SetBackdropColor(0.06, 0.07, 0.09, 0.94)
+                TurtleCollections_OnLoad()
+            </OnLoad>
+            <OnMouseDown>
+                this:StartMoving()
+            </OnMouseDown>
+            <OnMouseUp>
+                this:StopMovingOrSizing()
+            </OnMouseUp>
+        </Scripts>
+    </Frame>
+</Ui>
