@@ -129,8 +129,33 @@ local function GetPlayerRidingSkillRank()
     return 0
 end
 
+local function GetMountRequiredLevel(item)
+    if not item then return 40 end
+    local spellId = nil
+    local itemName = nil
+    if type(item) == "table" then
+        spellId = item.spellId
+        itemName = item.name
+    elseif type(item) == "number" then
+        spellId = item
+    end
+
+    if TC_CATALOG and spellId and TC_CATALOG[spellId] and TC_CATALOG[spellId].level then
+        return TC_CATALOG[spellId].level
+    end
+    if spellId == 30174 then -- Swift Riding Turtle
+        return 18
+    end
+    local lowerName = string.lower(itemName or "")
+    if string.find(lowerName, "swift") or string.find(lowerName, "armored") or string.find(lowerName, "deathcharger") or string.find(lowerName, "great") then
+        return 60
+    end
+    return 40
+end
+
 local function HasRidingSkill(item)
-    if item and item.spellId == 30174 then -- Swift Riding Turtle
+    local spellId = (type(item) == "table" and item.spellId) or (type(item) == "number" and item) or nil
+    if spellId == 30174 then -- Swift Riding Turtle
         return true
     end
     local reqRiding = 75
@@ -143,22 +168,9 @@ local function HasRidingSkill(item)
     local playerRiding = GetPlayerRidingSkillRank()
     return (playerRiding >= reqRiding)
 end
-HasRidingSkill = HasRidingSkill
 
-local function GetMountRequiredLevel(item)
-    if not item then return 40 end
-    if TC_CATALOG and item.spellId and TC_CATALOG[item.spellId] and TC_CATALOG[item.spellId].level then
-        return TC_CATALOG[item.spellId].level
-    end
-    if item.spellId == 30174 then -- Swift Riding Turtle
-        return 18
-    end
-    local lowerName = string.lower(item.name or "")
-    if string.find(lowerName, "swift") or string.find(lowerName, "armored") or string.find(lowerName, "deathcharger") or string.find(lowerName, "great") then
-        return 60
-    end
-    return 40
-end
+setglobal("GetMountRequiredLevel", GetMountRequiredLevel)
+setglobal("HasRidingSkill", HasRidingSkill)
 
 local function SummonCollectionItem(entry)
     -- Display-only mode: direct summoning and sampling from journal is disabled
