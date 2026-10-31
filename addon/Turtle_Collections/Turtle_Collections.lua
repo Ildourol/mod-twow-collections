@@ -129,6 +129,22 @@ local function GetPlayerRidingSkillRank()
     return 0
 end
 
+local function HasRidingSkill(item)
+    if item and item.spellId == 30174 then -- Swift Riding Turtle
+        return true
+    end
+    local reqRiding = 75
+    if item then
+        local reqLevel = GetMountRequiredLevel(item)
+        if reqLevel >= 60 then
+            reqRiding = 150
+        end
+    end
+    local playerRiding = GetPlayerRidingSkillRank()
+    return (playerRiding >= reqRiding)
+end
+HasRidingSkill = HasRidingSkill
+
 local function GetMountRequiredLevel(item)
     if not item then return 40 end
     if TC_CATALOG and item.spellId and TC_CATALOG[item.spellId] and TC_CATALOG[item.spellId].level then
@@ -145,18 +161,8 @@ local function GetMountRequiredLevel(item)
 end
 
 local function SummonCollectionItem(entry)
-    if not entry then return end
-
-    -- If known in spellbook, cast by name
-    if entry.name and TC.knownSpells and TC.knownSpells[entry.name] then
-        CastSpellByName(entry.name)
-        return
-    end
-
-    -- Otherwise send summon request to server
-    if entry.spellId and entry.spellId > 0 then
-        SendServerCommand("summon " .. entry.spellId)
-    end
+    -- Display-only mode: direct summoning and sampling from journal is disabled
+    return
 end
 
 -- -----------------------------------------------------------------------------
@@ -293,11 +299,7 @@ local function UpdateUI()
                 local charLevel = UnitLevel("player")
                 local reqLevel = GetMountRequiredLevel(item)
                 local reqRiding = (reqLevel >= 60) and 150 or 75
-                local playerRiding = GetPlayerRidingSkillRank()
-                local hasRiding = (playerRiding >= reqRiding)
-                if item.spellId == 30174 then -- Swift Riding Turtle
-                    hasRiding = true
-                end
+                local hasRiding = HasRidingSkill(item)
 
                 -- Class lock check for Paladin / Warlock class mounts
                 local isClassLocked = false
@@ -309,17 +311,9 @@ local function UpdateUI()
                 end
 
                 local isKnown = TC.knownSpells and TC.knownSpells[item.name]
-                local canUse = (charLevel >= reqLevel) and hasRiding and (not isClassLocked)
 
                 if actionBtn then
-                    actionBtn:Show()
-                    if canUse then
-                        actionBtn:Enable()
-                        actionBtn:SetText("Use")
-                    else
-                        actionBtn:Disable()
-                        actionBtn:SetText("Use")
-                    end
+                    actionBtn:Hide()
                 end
 
                 if isClassLocked then
@@ -335,22 +329,18 @@ local function UpdateUI()
                 elseif isKnown then
                     statusText:SetText("|cff00ff00Learned|r")
                 else
-                    statusText:SetText("|cff00ff00Unlocked|r")
+                    statusText:SetText("|cff00ff00Collected|r")
                 end
             elseif item.type == 2 then -- Pet
                 if actionBtn then
-                    actionBtn:Show()
-                    actionBtn:Enable()
-                    actionBtn:SetText("Summon")
+                    actionBtn:Hide()
                 end
-                statusText:SetText("|cff00ff00Unlocked|r")
+                statusText:SetText("|cff00ff00Collected|r")
             elseif item.type == 3 then -- Toy
                 if actionBtn then
-                    actionBtn:Show()
-                    actionBtn:Enable()
-                    actionBtn:SetText("Use")
+                    actionBtn:Hide()
                 end
-                statusText:SetText("|cff00ff00Unlocked|r")
+                statusText:SetText("|cff00ff00Collected|r")
             end
             row:Show()
         else
@@ -666,39 +656,13 @@ function TurtleCollections_NextPage()
 end
 
 function TurtleCollections_OnRowAction(rowIndex)
-    local idx = (TC.currentPage - 1) * TC.itemsPerPage + rowIndex
-    local item = TC.displayList[idx]
-    if not item then return end
-
-    if item.type == 1 then -- Mount
-        local charLevel = UnitLevel("player")
-        local reqLevel = GetMountRequiredLevel(item)
-        local hasRiding = HasRidingSkill()
-        if item.spellId == 30174 then
-            hasRiding = true
-        end
-
-        if charLevel < reqLevel then
-            if UIErrorsFrame then
-                UIErrorsFrame:AddMessage("You must reach level " .. reqLevel .. " to use this mount.", 1.0, 0.1, 0.1, 1.0, UIERRORS_HOLD_TIME)
-            end
-            return
-        end
-        if not hasRiding then
-            if UIErrorsFrame then
-                UIErrorsFrame:AddMessage("You must learn riding skill to use this mount.", 1.0, 0.1, 0.1, 1.0, UIERRORS_HOLD_TIME)
-            end
-            return
-        end
-
-        SummonCollectionItem(item)
-    else
-        SummonCollectionItem(item)
-    end
+    -- Display-only showcase: items cannot be summoned or sampled from the collections journal
+    return
 end
 
 function TurtleCollections_OnRowClick(rowIndex)
-    TurtleCollections_OnRowAction(rowIndex)
+    -- Display-only showcase: selection only
+    return
 end
 
 function TurtleCollections_OnRowEnter(rowIndex)
@@ -714,21 +678,35 @@ function TurtleCollections_OnRowEnter(rowIndex)
         if row.entry.type == 1 then
             local reqLevel = GetMountRequiredLevel(row.entry)
             local charLevel = UnitLevel("player")
-            local hasRiding = HasRidingSkill()
-            if row.entry.spellId == 30174 then
-                hasRiding = true
+            local reqRiding = (reqLevel >= 60) and 150 or 75
+            local hasRiding = HasRidingSkill(row.entry)
+
+            local isClassLocked = false
+            local _, playerClass = UnitClass("player")
+            if (row.entry.spellId == 13819 or row.entry.spellId == 23214) and playerClass ~= "PALADIN" then
+                isClassLocked = true
+            elseif (row.entry.spellId == 5784 or row.entry.spellId == 23161) and playerClass ~= "WARLOCK" then
+                isClassLocked = true
             end
 
-            if charLevel < reqLevel then
+            if isClassLocked then
+                GameTooltip:AddLine("Requires Class: " .. ((row.entry.spellId == 13819 or row.entry.spellId == 23214) and "Paladin" or "Warlock"), 1, 0.2, 0.2)
+            elseif charLevel < reqLevel then
                 GameTooltip:AddLine("Requires Level " .. reqLevel, 1, 0.5, 0)
             elseif not hasRiding then
-                GameTooltip:AddLine("Requires Riding Skill", 1, 0.5, 0)
+                GameTooltip:AddLine("Requires Riding Skill (" .. reqRiding .. ")", 1, 0.5, 0)
             else
-                GameTooltip:AddLine("Unlocked - Click to Summon", 0, 1, 0)
+                local isKnown = TC.knownSpells and TC.knownSpells[row.entry.name]
+                if isKnown then
+                    GameTooltip:AddLine("Collected (In Spellbook)", 0, 1, 0)
+                else
+                    GameTooltip:AddLine("Collected", 0, 1, 0)
+                end
             end
         else
-            GameTooltip:AddLine("Unlocked - Click to Use", 0, 1, 0)
+            GameTooltip:AddLine("Collected", 0, 1, 0)
         end
+        GameTooltip:AddLine("Journal is display-only", 0.5, 0.5, 0.5)
         GameTooltip:Show()
     end
 end

@@ -19,7 +19,7 @@
                     </Anchors>
                 </Texture>
                 <FontString name="$parentName" inherits="GameFontNormal" justifyH="LEFT">
-                    <Size><AbsDimension x="200" y="18"/></Size>
+                    <Size><AbsDimension x="220" y="18"/></Size>
                     <Anchors>
                         <Anchor point="LEFT" relativeTo="$parentIcon" relativePoint="RIGHT">
                             <Offset><AbsDimension x="6" y="0"/></Offset>
@@ -27,26 +27,21 @@
                     </Anchors>
                 </FontString>
                 <FontString name="$parentStatus" inherits="GameFontHighlightSmall" justifyH="RIGHT">
-                    <Size><AbsDimension x="95" y="18"/></Size>
+                    <Size><AbsDimension x="140" y="18"/></Size>
                     <Anchors>
-                        <Anchor point="RIGHT" relativeTo="$parentAction" relativePoint="LEFT">
-                            <Offset><AbsDimension x="-4" y="0"/></Offset>
+                        <Anchor point="RIGHT">
+                            <Offset><AbsDimension x="-8" y="0"/></Offset>
                         </Anchor>
                     </Anchors>
                 </FontString>
             </Layer>
         </Layers>
         <Frames>
-            <Button name="$parentAction" inherits="UIPanelButtonTemplate" text="Use">
-                <Size><AbsDimension x="50" y="20"/></Size>
+            <Button name="$parentAction" inherits="UIPanelButtonTemplate" text="Use" hidden="true">
+                <Size><AbsDimension x="1" y="1"/></Size>
                 <Anchors>
                     <Anchor point="RIGHT"><Offset><AbsDimension x="-4" y="0"/></Offset></Anchor>
                 </Anchors>
-                <Scripts>
-                    <OnClick>
-                        TurtleCollections_OnRowAction(this:GetParent():GetID())
-                    </OnClick>
-                </Scripts>
             </Button>
         </Frames>
         <Scripts>
@@ -235,4 +230,4 @@
             </OnMouseUp>
         </Scripts>
     </Frame>
-</Ui>
+</Ui>

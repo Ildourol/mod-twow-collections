@@ -547,6 +547,22 @@ bool CollectionsMgr::CanPlayerRideMount(Player* player, uint32 spellId) const
     if (sCollectionsConfig.IsRidingSkillEnforced() && spellId != 30174)
     {
         uint16 playerRiding = player->GetSkillValue(SKILL_RIDING);
+        static const SkillType ridingSkills[] = {
+            SKILL_RIDING_HORSE,
+            SKILL_RIDING_WOLF,
+            SKILL_RIDING_TIGER,
+            SKILL_RIDING_RAM,
+            SKILL_RIDING_RAPTOR,
+            SKILL_RIDING_MECHANOSTRIDER,
+            SKILL_RIDING_UNDEAD_HORSE,
+            SKILL_RIDING_KODO
+        };
+        for (SkillType sk : ridingSkills)
+        {
+            uint16 val = player->GetSkillValue(sk);
+            if (val > playerRiding)
+                playerRiding = val;
+        }
 
         // Paladin and Warlock class mount spells grant innate riding capability
         if (playerRiding == 0)
@@ -643,6 +659,11 @@ void CollectionsMgr::SyncPlayerSpells(Player* player)
             {
                 if (!player->HasSpell(entry.spellId))
                     player->LearnSpell(entry.spellId, false);
+            }
+            else
+            {
+                if (!sCollectionsConfig.IsShowInSpellbookAtLowLevel() && player->HasSpell(entry.spellId))
+                    player->RemoveSpell(entry.spellId, false, false);
             }
         }
     }

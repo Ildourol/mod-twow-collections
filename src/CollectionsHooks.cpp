@@ -10,6 +10,7 @@
 #include "Log.h"
 #include "Spells/SpellMgr.h"
 #include "Spells/Spell.h"
+#include "Spells/SpellAuras.h"
 
 // -----------------------------------------------------------------------------
 // 1. World Lifecycle Script (Boot & Runtime Live Reload)
@@ -169,19 +170,7 @@ public:
         }
         else if (action == "SUMMON")
         {
-            uint32 spellId = std::strtoul(rest.c_str(), nullptr, 10);
-            if (spellId && sCollectionsMgr.HasAccountSpell(from->GetSession()->GetAccountId(), COLLECTION_TYPE_NONE, spellId))
-            {
-                uint32 dummyItem = 0;
-                CollectionType type = sCollectionsMgr.GetCollectionTypeBySpell(spellId, dummyItem);
-                if (type == COLLECTION_TYPE_MOUNT && !sCollectionsMgr.CanPlayerRideMount(from, spellId))
-                {
-                    from->GetSession()->SendNotification("You do not meet the level or riding requirements to summon this mount.");
-                    ChatHandler(from).SendSysMessage("|cffff0000You do not meet the level or riding requirements to summon this mount.|r");
-                    return true;
-                }
-                from->CastSpell(from, spellId, false);
-            }
+            ChatHandler(from).SendSysMessage("|cffff8000The collections journal is for display only.|r");
             return true;
         }
         else if (action == "SYNC")
@@ -273,6 +262,26 @@ public:
         if (session->IsHeadless())
             return true;
 
+        if (packet.GetOpcode() == CMSG_CAST_SPELL)
+        {
+            if (packet.size() >= sizeof(uint32))
+            {
+                uint32 spellId = packet.read<uint32>(0);
+                uint32 dummyItem = 0;
+                CollectionType type = sCollectionsMgr.GetCollectionTypeBySpell(spellId, dummyItem);
+                if (type == COLLECTION_TYPE_MOUNT)
+                {
+                    Player* player = session->GetPlayer();
+                    if (!sCollectionsMgr.CanPlayerRideMount(player, spellId))
+                    {
+                        session->SendNotification("You do not meet the level or riding requirements to summon this mount.");
+                        ChatHandler(player).SendSysMessage("|cffff0000You do not meet the level or riding requirements to summon this mount.|r");
+                        return false; // Drop CMSG_CAST_SPELL packet immediately! Completely aborts cast.
+                    }
+                }
+            }
+        }
+
         if (packet.GetOpcode() == CMSG_MESSAGECHAT)
         {
             try
@@ -319,21 +328,8 @@ public:
                         }
                         else if (action == "SUMMON")
                         {
-                            uint32 spellId = std::strtoul(rest.c_str(), nullptr, 10);
-                            if (spellId && sCollectionsMgr.HasAccountSpell(player->GetSession()->GetAccountId(), COLLECTION_TYPE_NONE, spellId))
-                            {
-                                uint32 dummyItem = 0;
-                                CollectionType colType = sCollectionsMgr.GetCollectionTypeBySpell(spellId, dummyItem);
-                                if (colType == COLLECTION_TYPE_MOUNT && !sCollectionsMgr.CanPlayerRideMount(player, spellId))
-                                {
-                                    player->GetSession()->SendNotification("You do not meet the level or riding requirements to summon this mount.");
-                                    ChatHandler(player).SendSysMessage("|cffff0000You do not meet the level or riding requirements to summon this mount.|r");
-                                }
-                                else
-                                {
-                                    player->CastSpell(player, spellId, false);
-                                }
-                            }
+                            ChatHandler(player).SendSysMessage("|cffff8000The collections journal is for display only.|r");
+                            return false;
                         }
                         else if (action == "SYNC")
                         {
@@ -517,6 +513,42 @@ public:
 };
 
 // -----------------------------------------------------------------------------
+// 6. Unit Lifecycle Script (Mount Aura Gating Defense-in-Depth)
+// -----------------------------------------------------------------------------
+class CollectionsUnitScript : public UnitScript
+{
+public:
+    CollectionsUnitScript()
+        : UnitScript("CollectionsUnitScript", { UNITHOOK_ON_AURA_APPLY })
+    {
+    }
+
+    void OnAuraApply(Unit* unit, Aura* aura) override
+    {
+        if (!sCollectionsConfig.IsEnabled() || !unit || !aura)
+            return;
+
+        Player* player = unit->ToPlayer();
+        if (!player || !player->GetSession() || player->GetSession()->IsHeadless())
+            return;
+
+        uint32 spellId = aura->GetId();
+        uint32 dummyItem = 0;
+        CollectionType type = sCollectionsMgr.GetCollectionTypeBySpell(spellId, dummyItem);
+        if (type == COLLECTION_TYPE_MOUNT)
+        {
+            if (!sCollectionsMgr.CanPlayerRideMount(player, spellId))
+            {
+                player->RemoveAurasDueToSpell(spellId);
+                player->Unmount();
+                player->GetSession()->SendNotification("You do not meet the level or riding requirements to summon this mount.");
+                ChatHandler(player).SendSysMessage("|cffff0000You do not meet the level or riding requirements to summon this mount.|r");
+            }
+        }
+    }
+};
+
+// -----------------------------------------------------------------------------
 // Script Loader Instantiation
 // -----------------------------------------------------------------------------
 void AddCollectionsScriptHooks()
@@ -525,5 +557,6 @@ void AddCollectionsScriptHooks()
     new CollectionsPlayerScript();
     new CollectionsItemScript();
     new CollectionsServerScript();
+    new CollectionsUnitScript();
     new CollectionsCommandScript();
 }
