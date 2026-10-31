@@ -7,10 +7,13 @@ A standalone, non-intrusive custom module for **Turtle WoW custom vMaNGOS** (`to
 ## Features
 - **Account-Wide Progression**: Mounts, companion pets, and novelty toys learned by any character on an account are automatically saved to `account_collection` and shared across all characters on that account.
 - **Inventory Bag Space Saver**: Eliminates the need to carry dozens of mount whistles, pet carriers, and toy tokens in bags or bank slots.
-- **Automatic Login Synchronization**: When an alt character logs in, eligible companion pets and novelty toys are automatically taught. Mounts are automatically taught when the character satisfies level (e.g. 40 / 60) and riding requirements.
+- **Dual-Tier Riding Skill Verification**: Enforces Apprentice Riding (rank 75) for 60% mounts and Journeyman Riding (rank 150) for 100% epic mounts. Level 60 characters cannot summon or learn epic mounts without training rank 150 riding from a trainer.
+- **Class Mount Isolation**: Checks DBC `classmask` to ensure Paladin Warhorse/Charger and Warlock Felsteed/Dreadsteed remain exclusive to their respective classes.
+- **Faction & Race Protection**: Gated by faction alignment so Alliance characters cannot automatically learn Horde racial mounts (Wolves, Kodos, Undead Horses) and vice versa (configurable).
+- **Dynamic Riding Trainer Detection**: Automatically detects when a player trains Riding Skill from any trainer spell via `SPELL_EFFECT_SKILL` & `SKILL_RIDING` and instantly syncs eligible mounts.
+- **Live Runtime Reload**: Built with `WorldScript` listening to `WORLDHOOK_ON_AFTER_CONFIG_LOAD` so `.reload config` updates settings and exclusions instantly without restarting `mangosd`.
 - **Low-Level Mount Visibility**: Low-level characters can view all unlocked account mounts in the collection browser by default, with summoning strictly locked until level and riding prerequisites are met.
-- **Multi-Racial Riding Prerequisite Gating**: Supports all 8 Vanilla racial riding skills (Horse, Wolf, Tiger, Ram, Raptor, Mechanostrider, Undead Horse, Kodo), unified riding (762), and Paladin/Warlock class mounts.
-- **Retroactive Inventory Scanner**: Veterans can use `.collection sync` to automatically scan existing spellbooks, equipped items, inventory bags, and bank vaults, backfilling all collected items into the account collection.
+- **Retroactive Inventory Scanner & Cleanse**: Veterans can use `.collection sync` to automatically scan existing spellbooks, equipped items, inventory bags, and bank vaults. Use `.collection cleanse` to unlearn any invalid cross-class or cross-faction mounts.
 - **Native Lua 5.0 Client AddOn**: Includes `Turtle_Collections`, a 420×420 compact dark theme UI with search filtering, category tabs, draggable minimap button, and one-click summoning.
 - **Companion Critter Petting**: Tracks critter petting interactions (`character_critter_pet`) and ensures summoned vanity creatures are classified as Critters (`type = 8`).
 - **The Unediting Doctrine**: 100% encapsulated inside standalone module space. Zero changes to `tortoise-wow` core headers or `TortoiseBots`.
@@ -56,8 +59,10 @@ Apply the SQL schemas and catalogs to your MySQL / MariaDB databases in the foll
    ```
 2. Review and adjust configuration parameters in `mod-twow-collections.conf` if desired (all defaults are pre-calibrated for immediate gameplay):
    - `Collections.Enable = 1`
-   - `Collections.Mounts.ShowToLowLevel = 1` (low-level alts can browse the account mount collection)
-   - `Collections.Mounts.AutoLearnOnLogin = 1` (eligible mounts auto-learned once level 40/60 and riding skill are satisfied)
+   - `Collections.Mounts.LimitClass = 1`
+   - `Collections.Mounts.LimitRace = 1`
+   - `Collections.Mounts.ShowToLowLevel = 1`
+   - `Collections.Mounts.AutoLearnOnLogin = 1`
 
 ### 4. Client AddOn Installation
 1. Copy the `addon/Turtle_Collections` folder directly into your Turtle WoW game client's AddOn directory:
@@ -85,6 +90,7 @@ Apply the SQL schemas and catalogs to your MySQL / MariaDB databases in the foll
 | `.collection list toys [page]` | Lists account-unlocked novelty toys. |
 | `.collection summon <spellId>` | Summons an unlocked mount or companion pet. |
 | `.collection sync` | Retroactively scans bags, bank, and spells, registering all to account collection. |
+| `.collection cleanse` | Removes invalid class or cross-faction mounts from character spellbook. |
 
 ---
 
@@ -96,7 +102,7 @@ The module comes bundled with `addon/Turtle_Collections`:
   - `/pets`
   - `/toybox`
 - **Browsing**: Filter collection items by category (Mounts, Companion Pets, Vanity Toys) or by name with the live search box.
-- **Low-Level Gating**: Unlocked mounts are visible to low-level characters; action buttons display `Req Lvl X` or `Req Riding` and remain disabled until prerequisites are trained.
+- **Gating Indications**: Unlocked mounts display status cleanly (`Req Lvl X`, `Req Riding 75`, `Req Riding 150`, or `Class Locked`).
 - **Summoning**: Click **Use** on any eligible item to summon or activate it directly.
 
 ---
@@ -110,9 +116,16 @@ The module comes bundled with `addon/Turtle_Collections`:
 | `Collections.AccountWide.Pets` | `1` | Shares companion pets across all characters on the account. |
 | `Collections.AccountWide.Toys` | `1` | Shares novelty toys across all characters on the account. |
 | `Collections.Mounts.AutoLearnOnLogin` | `1` | Automatically teaches unlocked mounts on login if level and riding skill are met. |
-| `Collections.Mounts.ShowToLowLevel` | `1` | Enables low-level characters to view unlocked account mounts in the collection browser. |
+| `Collections.Mounts.ShowToLowLevel` | `1` | Enables low-level characters to view unlocked account mounts in the client AddOn collection browser (`/collection`). |
+| `Collections.Mounts.ShowInSpellbookAtLowLevel` | `1` | Enables low-level characters to view unlocked account mounts in their native game spellbook (`P` key). |
 | `Collections.Mounts.EnforceLevelRequirements` | `1` | Enforces character level checks (e.g. 40/60) before auto-learning or summoning mounts. |
-| `Collections.Mounts.EnforceRidingSkill` | `1` | Enforces riding skill requirement before auto-learning or summoning mounts. |
+| `Collections.Mounts.EnforceRidingSkill` | `1` | Enforces riding skill rank requirement (75 vs 150) before auto-learning or summoning mounts. |
+| `Collections.Mounts.LimitClass` | `1` | Enforces class restrictions (Paladin/Warlock mounts only for their class). |
+| `Collections.Mounts.LimitRace` | `1` | Enforces faction alignment (Alliance characters do not receive Horde racial mounts). |
+| `Collections.Mounts.AllowAllMounts` | `0` | Bypasses all riding and level gating checks. |
+| `Collections.Mounts.ExcludedSpellIDs` | `0` | Comma-separated spell IDs to exclude from account mount sharing. |
+| `Collections.Mounts.EpicSpellIDs` | `0` | Override list of spell IDs forced to require Journeyman Riding (150). |
+| `Collections.Mounts.NormalSpellIDs` | `0` | Override list of spell IDs forced to require Apprentice Riding (75). |
 | `Collections.ConsumeItemOnLearn` | `1` | Consumes the physical inventory item when a collection item is first learned. |
 | `Collections.AnnounceOnLearn` | `1` | Broadcasts an affirmative chat notification when a new collection item is unlocked. |
 

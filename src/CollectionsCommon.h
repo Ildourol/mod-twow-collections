@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <set>
 #include <mutex>
 
 enum CollectionType : uint8
@@ -14,6 +15,10 @@ enum CollectionType : uint8
     COLLECTION_TYPE_TOY   = 3,
     COLLECTION_TYPE_MAX   = 4
 };
+
+// Tortoise-WoW riding skill tiers
+constexpr uint32 RIDING_SKILL_APPRENTICE = 75;
+constexpr uint32 RIDING_SKILL_JOURNEYMAN = 150;
 
 struct CollectionEntry
 {

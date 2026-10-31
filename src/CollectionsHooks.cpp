@@ -12,7 +12,37 @@
 #include "Spells/Spell.h"
 
 // -----------------------------------------------------------------------------
-// 1. Player Lifecycle Script
+// 1. World Lifecycle Script (Boot & Runtime Live Reload)
+// -----------------------------------------------------------------------------
+class CollectionsWorldScript : public WorldScript
+{
+public:
+    CollectionsWorldScript()
+        : WorldScript("CollectionsWorldScript",
+            {
+                WORLDHOOK_ON_BEFORE_WORLD_INITIALIZED,
+                WORLDHOOK_ON_AFTER_CONFIG_LOAD
+            })
+    {
+    }
+
+    void OnBeforeWorldInitialized() override
+    {
+        sCollectionsConfig.LoadConfig();
+        sCollectionsMgr.LoadWorldCollections();
+        sLog.outString("[mod-twow-collections] World collections loaded.");
+    }
+
+    void OnAfterConfigLoad(bool /*reload*/) override
+    {
+        sCollectionsConfig.LoadConfig();
+        sCollectionsMgr.LoadWorldCollections();
+        sLog.outString("[mod-twow-collections] Config and collections reloaded.");
+    }
+};
+
+// -----------------------------------------------------------------------------
+// 2. Player Lifecycle Script
 // -----------------------------------------------------------------------------
 class CollectionsPlayerScript : public PlayerScript
 {
@@ -44,11 +74,12 @@ public:
         CollectionType type = sCollectionsMgr.GetCollectionTypeBySpell(spellId, dummyItem);
         if (type == COLLECTION_TYPE_MOUNT)
         {
-            if (!sCollectionsMgr.CanPlayerLearnMount(player, spellId))
+            if (!sCollectionsMgr.CanPlayerRideMount(player, spellId))
             {
                 spell->cancel();
                 player->RemoveAurasDueToSpell(spellId);
                 player->Unmount();
+                player->GetSession()->SendNotification("You do not meet the level or riding requirements to summon this mount.");
                 ChatHandler(player).SendSysMessage("|cffff0000You do not meet the level or riding requirements to summon this mount.|r");
             }
         }
@@ -101,12 +132,11 @@ public:
             sCollectionsMgr.AddToAccountCollection(player, type, itemId, spellId);
         }
 
-        // If player learned a riding skill or class mount, sync eligible mounts
-        if (spellId == 33388 || spellId == 33391 || // Apprentice / Journeyman Riding
-            spellId == 824 || spellId == 826 || spellId == 828 || spellId == 830 || // Racial riding spells
-            spellId == 10861 || spellId == 10907 || spellId == 10967 || spellId == 18995 ||
+        // Dynamically detect if player learned Riding Skill via trainer or class mount
+        SpellEntry const* spellInfo = sSpellMgr.GetSpellEntry(spellId);
+        if (sCollectionsMgr.IsRidingSkillSpell(spellId, spellInfo) ||
             spellId == 13819 || spellId == 23214 || // Paladin class mounts
-            spellId == 5784 || spellId == 23161)    // Warlock class mounts
+            spellId == 5784  || spellId == 23161)   // Warlock class mounts
         {
             sCollectionsMgr.SyncPlayerSpells(player);
             sCollectionsMgr.SendAddonSync(player, COLLECTION_TYPE_MOUNT);
@@ -144,8 +174,9 @@ public:
             {
                 uint32 dummyItem = 0;
                 CollectionType type = sCollectionsMgr.GetCollectionTypeBySpell(spellId, dummyItem);
-                if (type == COLLECTION_TYPE_MOUNT && !sCollectionsMgr.CanPlayerLearnMount(from, spellId))
+                if (type == COLLECTION_TYPE_MOUNT && !sCollectionsMgr.CanPlayerRideMount(from, spellId))
                 {
+                    from->GetSession()->SendNotification("You do not meet the level or riding requirements to summon this mount.");
                     ChatHandler(from).SendSysMessage("|cffff0000You do not meet the level or riding requirements to summon this mount.|r");
                     return true;
                 }
@@ -183,7 +214,7 @@ public:
 };
 
 // -----------------------------------------------------------------------------
-// 2. AllItemScript Hook (Intercept Collection Item Use)
+// 3. AllItemScript Hook (Intercept Collection Item Use)
 // -----------------------------------------------------------------------------
 class CollectionsItemScript : public AllItemScript
 {
@@ -207,7 +238,7 @@ public:
             return true; // Handled, prevent consuming another item
         }
 
-        if (type == COLLECTION_TYPE_MOUNT && !sCollectionsMgr.CanPlayerLearnMount(player, spellId))
+        if (type == COLLECTION_TYPE_MOUNT && !sCollectionsMgr.CanPlayerRideMount(player, spellId))
         {
             player->GetSession()->SendNotification("You do not meet the level or riding requirements for this mount.");
             return true;
@@ -224,7 +255,7 @@ public:
 };
 
 // -----------------------------------------------------------------------------
-// 3. Network Ingress ServerScript (Secondary Fallback)
+// 4. Network Ingress ServerScript (Secondary Fallback)
 // -----------------------------------------------------------------------------
 class CollectionsServerScript : public ServerScript
 {
@@ -293,8 +324,9 @@ public:
                             {
                                 uint32 dummyItem = 0;
                                 CollectionType colType = sCollectionsMgr.GetCollectionTypeBySpell(spellId, dummyItem);
-                                if (colType == COLLECTION_TYPE_MOUNT && !sCollectionsMgr.CanPlayerLearnMount(player, spellId))
+                                if (colType == COLLECTION_TYPE_MOUNT && !sCollectionsMgr.CanPlayerRideMount(player, spellId))
                                 {
+                                    player->GetSession()->SendNotification("You do not meet the level or riding requirements to summon this mount.");
                                     ChatHandler(player).SendSysMessage("|cffff0000You do not meet the level or riding requirements to summon this mount.|r");
                                 }
                                 else
@@ -324,7 +356,7 @@ public:
 };
 
 // -----------------------------------------------------------------------------
-// 4. Command Script (.collection)
+// 5. Command Script (.collection)
 // -----------------------------------------------------------------------------
 class CollectionsCommandScript : public AllCommandScript
 {
@@ -370,7 +402,14 @@ public:
             handler->PSendSysMessage("Mounts Unlocked: |cff00ff00%zu|r", mounts.size());
             handler->PSendSysMessage("Companion Pets:  |cff00ff00%zu|r", pets.size());
             handler->PSendSysMessage("Toys & Novelties:|cff00ff00%zu|r", toys.size());
-            handler->SendSysMessage("Type |cffffcc00.collection list [mounts|pets|toys]|r or |cffffcc00.collection sync|r.");
+            handler->SendSysMessage("Type |cffffcc00.collection list [mounts|pets|toys]|r, |cffffcc00.collection sync|r, or |cffffcc00.collection cleanse|r.");
+            return false;
+        }
+        else if (sub == "cleanse")
+        {
+            uint32 cleansed = sCollectionsMgr.CleanseInvalidMounts(player);
+            handler->PSendSysMessage("|cff00ff00[Collections]|r Cleanse complete: %u invalid mount(s) removed from spellbook.", cleansed);
+            sCollectionsMgr.SendAddonSync(player, COLLECTION_TYPE_MOUNT);
             return false;
         }
         else if (sub == "sync")
@@ -452,7 +491,7 @@ public:
             CollectionType type = sCollectionsMgr.GetCollectionTypeBySpell(spellId, dummyItem);
             if (type == COLLECTION_TYPE_MOUNT)
             {
-                if (!sCollectionsMgr.CanPlayerLearnMount(player, spellId))
+                if (!sCollectionsMgr.CanPlayerRideMount(player, spellId))
                 {
                     handler->SendSysMessage("|cffff0000You do not meet the level or riding requirements to summon this mount.|r");
                     return false;
@@ -469,6 +508,7 @@ public:
             handler->SendSysMessage("  .collection list [mounts|pets|toys] - List unlocked collection items");
             handler->SendSysMessage("  .collection summon <spellId> - Summon an unlocked mount or pet");
             handler->SendSysMessage("  .collection sync - Retroactively import all inventory and known spells");
+            handler->SendSysMessage("  .collection cleanse - Remove invalid class or cross-faction mounts from spellbook");
             return false;
         }
 
@@ -481,6 +521,7 @@ public:
 // -----------------------------------------------------------------------------
 void AddCollectionsScriptHooks()
 {
+    new CollectionsWorldScript();
     new CollectionsPlayerScript();
     new CollectionsItemScript();
     new CollectionsServerScript();

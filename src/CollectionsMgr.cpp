@@ -4,12 +4,19 @@
 #include "Objects/Item.h"
 #include "Objects/Bag.h"
 #include "Objects/Creature.h"
+#include "Objects/ItemPrototype.h"
 #include "Chat/Chat.h"
 #include "Database/DatabaseEnv.h"
 #include "WorldPacket.h"
 #include "Opcodes.h"
 #include "Log.h"
 #include "Spells/SpellMgr.h"
+#include "Spells/SpellEntry.h"
+#include "Spells/SpellDefines.h"
+#include "SharedDefines.h"
+#include "SpellAuraDefines.h"
+#include "DBCStructure.h"
+#include "DBCStores.h"
 
 CollectionsMgr& CollectionsMgr::Instance()
 {
@@ -31,9 +38,14 @@ void CollectionsMgr::LoadWorldCollections()
     m_spellToMountItem.clear();
     m_spellToPetItem.clear();
     m_spellToToyItem.clear();
+    m_spellToRequiredSkillRank.clear();
 
-    // 1. Mounts
-    QueryResult* mountRes = WorldDatabase.Query("SELECT itemId, spellId FROM collection_mount");
+    // 1. Mounts (with required_skill_rank from item_template)
+    QueryResult* mountRes = WorldDatabase.Query(
+        "SELECT cm.itemId, cm.spellId, it.required_skill_rank "
+        "FROM collection_mount cm "
+        "LEFT JOIN item_template it ON cm.itemId = it.entry");
+
     if (mountRes)
     {
         do
@@ -41,8 +53,12 @@ void CollectionsMgr::LoadWorldCollections()
             Field* fields = mountRes->Fetch();
             uint32 itemId = fields[0].GetUInt32();
             uint32 spellId = fields[1].GetUInt32();
+            uint32 reqSkillRank = fields[2].GetUInt32();
+
             m_mountSpells[itemId] = spellId;
             m_spellToMountItem[spellId] = itemId;
+            if (reqSkillRank > 0)
+                m_spellToRequiredSkillRank[spellId] = reqSkillRank;
         } while (mountRes->NextRow());
         delete mountRes;
     }
@@ -77,10 +93,70 @@ void CollectionsMgr::LoadWorldCollections()
         delete toyRes;
     }
 
+    // 4. Dynamic scan of DBC spells for all mount spells across the game
+    for (uint32 id = 1; id < sSpellMgr.GetMaxSpellId(); ++id)
+    {
+        SpellEntry const* spellInfo = sSpellMgr.GetSpellEntry(id);
+        if (!spellInfo)
+            continue;
+
+        if (IsMountSpell(spellInfo))
+        {
+            if (m_spellToMountItem.find(id) == m_spellToMountItem.end())
+            {
+                m_spellToMountItem[id] = 0; // Dynamic mount without direct item template link
+            }
+        }
+    }
+
     if (sCollectionsConfig.IsLoggingEnabled())
     {
-        sLog.outString("[mod-twow-collections] Loaded %zu mounts, %zu pets, %zu toys from WorldDatabase.",
-            m_mountSpells.size(), m_petSpells.size(), m_toySpells.size());
+        sLog.outString("[mod-twow-collections] Loaded %zu mounts (%zu with riding rank), %zu pets, %zu toys from WorldDatabase/DBC.",
+            m_mountSpells.size(), m_spellToRequiredSkillRank.size(), m_petSpells.size(), m_toySpells.size());
+    }
+}
+
+void CollectionsMgr::AutoBackfillAccountCollection(uint32 accountId)
+{
+    if (!accountId)
+        return;
+
+    // Discover and import all collection spells known by any character on this account
+    std::unique_ptr<QueryResult> charRes(CharacterDatabase.PQuery(
+        "SELECT guid, race, class FROM characters WHERE account = %u", accountId));
+
+    if (!charRes)
+        return;
+
+    std::vector<uint32> guids;
+    do
+    {
+        Field* fields = charRes->Fetch();
+        guids.push_back(fields[0].GetUInt32());
+    } while (charRes->NextRow());
+
+    for (uint32 guid : guids)
+    {
+        std::unique_ptr<QueryResult> spellRes(CharacterDatabase.PQuery(
+            "SELECT spell FROM character_spell WHERE guid = %u", guid));
+
+        if (!spellRes)
+            continue;
+
+        do
+        {
+            uint32 spellId = spellRes->Fetch()[0].GetUInt32();
+            uint32 itemId = 0;
+            CollectionType type = GetCollectionTypeBySpell(spellId, itemId);
+
+            if (type != COLLECTION_TYPE_NONE)
+            {
+                CharacterDatabase.PExecute(
+                    "INSERT IGNORE INTO account_collection (account_id, collection_type, item_id, spell_id, learned_by_guid) "
+                    "VALUES (%u, %u, %u, %u, %u)",
+                    accountId, static_cast<uint32>(type), itemId, spellId, guid);
+            }
+        } while (spellRes->NextRow());
     }
 }
 
@@ -89,10 +165,12 @@ void CollectionsMgr::LoadAccountCollection(uint32 accountId)
     if (!accountId)
         return;
 
+    AutoBackfillAccountCollection(accountId);
+
     std::vector<CollectionEntry> entries;
-    QueryResult* res = CharacterDatabase.PQuery(
+    std::unique_ptr<QueryResult> res(CharacterDatabase.PQuery(
         "SELECT collection_type, item_id, spell_id FROM account_collection WHERE account_id = %u",
-        accountId);
+        accountId));
 
     if (res)
     {
@@ -105,7 +183,6 @@ void CollectionsMgr::LoadAccountCollection(uint32 accountId)
             entry.spellId = fields[2].GetUInt32();
             entries.push_back(entry);
         } while (res->NextRow());
-        delete res;
     }
 
     std::lock_guard<std::mutex> lock(m_cacheLock);
@@ -173,6 +250,15 @@ CollectionType CollectionsMgr::GetCollectionTypeByItem(uint32 itemId, uint32& ou
     return COLLECTION_TYPE_NONE;
 }
 
+bool CollectionsMgr::IsMountSpell(SpellEntry const* spellInfo) const
+{
+    if (!spellInfo)
+        return false;
+
+    return spellInfo->Effect[0] == SPELL_EFFECT_APPLY_AURA &&
+           spellInfo->EffectApplyAuraName[0] == SPELL_AURA_MOUNTED;
+}
+
 CollectionType CollectionsMgr::GetCollectionTypeBySpell(uint32 spellId, uint32& outItemId) const
 {
     if (auto it = m_spellToMountItem.find(spellId); it != m_spellToMountItem.end())
@@ -190,6 +276,14 @@ CollectionType CollectionsMgr::GetCollectionTypeBySpell(uint32 spellId, uint32& 
         outItemId = it->second;
         return COLLECTION_TYPE_TOY;
     }
+
+    SpellEntry const* spellInfo = sSpellMgr.GetSpellEntry(spellId);
+    if (IsMountSpell(spellInfo))
+    {
+        outItemId = 0;
+        return COLLECTION_TYPE_MOUNT;
+    }
+
     outItemId = 0;
     return COLLECTION_TYPE_NONE;
 }
@@ -240,12 +334,142 @@ bool CollectionsMgr::AddToAccountCollection(Player* player, CollectionType type,
     return true;
 }
 
+bool CollectionsMgr::HasEpicSpeedInDbc(SpellEntry const* spellInfo) const
+{
+    if (!spellInfo)
+        return false;
+
+    for (uint32 i = 0; i < MAX_EFFECT_INDEX; ++i)
+    {
+        if (spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED &&
+            spellInfo->EffectBasePoints[i] >= 90)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+uint32 CollectionsMgr::GetRequiredRidingSkill(uint32 spellId, SpellEntry const* spellInfo) const
+{
+    auto const& forcedNormal = sCollectionsConfig.GetForcedNormalSpellIds();
+    if (forcedNormal.find(spellId) != forcedNormal.end())
+        return RIDING_SKILL_APPRENTICE;
+
+    auto const& forcedEpic = sCollectionsConfig.GetForcedEpicSpellIds();
+    if (forcedEpic.find(spellId) != forcedEpic.end())
+        return RIDING_SKILL_JOURNEYMAN;
+
+    auto skillItr = m_spellToRequiredSkillRank.find(spellId);
+    if (skillItr != m_spellToRequiredSkillRank.end() && skillItr->second > 0)
+        return (skillItr->second <= RIDING_SKILL_APPRENTICE) ? RIDING_SKILL_APPRENTICE : RIDING_SKILL_JOURNEYMAN;
+
+    if (!spellInfo)
+        return RIDING_SKILL_APPRENTICE;
+
+    if (spellInfo->Custom & SPELL_CUSTOM_MOUNT_SPEED_100)
+        return RIDING_SKILL_JOURNEYMAN;
+
+    if (spellInfo->Custom & SPELL_CUSTOM_IGNORE_RIDING_SKILL_MOUNT_SPEED)
+        return HasEpicSpeedInDbc(spellInfo) ? RIDING_SKILL_JOURNEYMAN : RIDING_SKILL_APPRENTICE;
+
+    return HasEpicSpeedInDbc(spellInfo) ? RIDING_SKILL_JOURNEYMAN : RIDING_SKILL_APPRENTICE;
+}
+
+bool CollectionsMgr::IsAllowedForPlayerClass(uint32 spellId, Player const* player) const
+{
+    if (!player || !sCollectionsConfig.IsMountClassLimited())
+        return true;
+
+    SkillLineAbilityMapBounds bounds = sSpellMgr.GetSkillLineAbilityMapBoundsBySpellId(spellId);
+    bool hasClassRestriction = false;
+    bool playerMatches = false;
+
+    for (auto itr = bounds.first; itr != bounds.second; ++itr)
+    {
+        SkillLineAbilityEntry const* ability = itr->second;
+        if (!ability)
+            continue;
+
+        if (ability->classmask != 0)
+        {
+            hasClassRestriction = true;
+            if (ability->classmask & player->GetClassMask())
+                playerMatches = true;
+        }
+    }
+
+    return !hasClassRestriction || playerMatches;
+}
+
+bool CollectionsMgr::IsAllowedForPlayerRace(uint32 spellId, uint32 itemId, Player const* player) const
+{
+    if (!player || !sCollectionsConfig.IsMountRaceLimited())
+        return true;
+
+    if (!itemId)
+    {
+        auto it = m_spellToMountItem.find(spellId);
+        if (it != m_spellToMountItem.end())
+            itemId = it->second;
+    }
+
+    if (!itemId)
+        return true;
+
+    ItemPrototype const* proto = sObjectMgr.GetItemPrototype(itemId);
+    if (!proto || proto->AllowableRace == 0 || proto->AllowableRace == 0xFFFFFFFF)
+        return true;
+
+    // Check if character's race matches the item's allowable race mask directly
+    if (proto->AllowableRace & player->GetRaceMask())
+        return true;
+
+    // Faction alignment check
+    Team playerTeam = Player::TeamForRace(player->GetRace());
+    bool isAllianceItem = (proto->AllowableRace & RACEMASK_ALLIANCE) != 0;
+    bool isHordeItem = (proto->AllowableRace & RACEMASK_HORDE) != 0;
+
+    if (playerTeam == ALLIANCE && !isAllianceItem && isHordeItem)
+        return false;
+    if (playerTeam == HORDE && !isHordeItem && isAllianceItem)
+        return false;
+
+    // If item allows races within player's faction, allow it
+    if (playerTeam == ALLIANCE && isAllianceItem)
+        return true;
+    if (playerTeam == HORDE && isHordeItem)
+        return true;
+
+    return true; // Default to allow if not explicitly belonging to opposing faction
+}
+
+bool CollectionsMgr::IsRidingSkillSpell(uint32 spellId, SpellEntry const* spellInfo) const
+{
+    if (!spellInfo)
+        spellInfo = sSpellMgr.GetSpellEntry(spellId);
+
+    if (!spellInfo)
+        return false;
+
+    for (uint32 i = 0; i < MAX_EFFECT_INDEX; ++i)
+    {
+        if (spellInfo->Effect[i] == SPELL_EFFECT_SKILL &&
+            spellInfo->EffectMiscValue[i] == SKILL_RIDING)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool CollectionsMgr::HasRidingSkill(Player* player) const
 {
     if (!player)
         return false;
 
-    // Check unified riding skill as well as all racial / faction riding skills
     if (player->GetSkillValue(SKILL_RIDING) > 0 ||
         player->GetSkillValue(SKILL_RIDING_HORSE) > 0 ||
         player->GetSkillValue(SKILL_RIDING_WOLF) > 0 ||
@@ -259,7 +483,6 @@ bool CollectionsMgr::HasRidingSkill(Player* player) const
         return true;
     }
 
-    // Paladin and Warlock class mount spells grant innate riding capability
     if (player->HasSpell(13819u) || player->HasSpell(5784u) ||
         player->HasSpell(23214u) || player->HasSpell(23161u))
     {
@@ -269,49 +492,97 @@ bool CollectionsMgr::HasRidingSkill(Player* player) const
     return false;
 }
 
-bool CollectionsMgr::CanPlayerLearnMount(Player* player, uint32 spellId) const
+bool CollectionsMgr::CanPlayerAddMountToSpellbook(Player* player, uint32 spellId) const
 {
     if (!player)
         return false;
 
+    if (sCollectionsConfig.IsAllowAllMounts())
+        return true;
+
+    auto const& excluded = sCollectionsConfig.GetExcludedSpellIds();
+    if (excluded.find(spellId) != excluded.end())
+        return false;
+
+    if (!IsAllowedForPlayerClass(spellId, player))
+        return false;
+
+    uint32 itemId = 0;
+    GetCollectionTypeBySpell(spellId, itemId);
+    if (!IsAllowedForPlayerRace(spellId, itemId, player))
+        return false;
+
+    return true;
+}
+
+bool CollectionsMgr::CanPlayerRideMount(Player* player, uint32 spellId) const
+{
+    if (!CanPlayerAddMountToSpellbook(player, spellId))
+        return false;
+
+    if (sCollectionsConfig.IsAllowAllMounts())
+        return true;
+
+    SpellEntry const* spellInfo = sSpellMgr.GetSpellEntry(spellId);
+    if (!spellInfo)
+        return false;
+
+    uint32 requiredRidingRank = GetRequiredRidingSkill(spellId, spellInfo);
+
     if (sCollectionsConfig.IsMountLevelEnforced())
     {
-        SpellEntry const* spellInfo = sSpellMgr.GetSpellEntry(spellId);
-        if (spellInfo)
-        {
-            if (spellInfo->baseLevel > 0 && player->GetLevel() < spellInfo->baseLevel)
-                return false;
+        if (spellInfo->baseLevel > 0 && player->GetLevel() < spellInfo->baseLevel)
+            return false;
 
-            // Swift Riding Turtle (spell 30174) requires level 18
-            if (spellId == 30174 && player->GetLevel() < 18)
-                return false;
+        // Swift Riding Turtle (spell 30174) requires level 18
+        if (spellId == 30174 && player->GetLevel() < 18)
+            return false;
 
-            // Check speed threshold: 100% epic mounts require level 60, 60% standard mounts require level 40
-            bool isFastMount = false;
-            for (int i = 0; i < 3; ++i)
-            {
-                if (spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED &&
-                    spellInfo->EffectBasePoints[i] >= 99)
-                {
-                    isFastMount = true;
-                    break;
-                }
-            }
-
-            if (isFastMount && player->GetLevel() < 60)
-                return false;
-            else if (!isFastMount && spellId != 30174 && player->GetLevel() < 40)
-                return false;
-        }
+        if (requiredRidingRank >= RIDING_SKILL_JOURNEYMAN && player->GetLevel() < 60)
+            return false;
+        else if (requiredRidingRank <= RIDING_SKILL_APPRENTICE && spellId != 30174 && player->GetLevel() < 40)
+            return false;
     }
 
     if (sCollectionsConfig.IsRidingSkillEnforced() && spellId != 30174)
     {
-        if (!HasRidingSkill(player))
+        uint16 playerRiding = player->GetSkillValue(SKILL_RIDING);
+
+        // Paladin and Warlock class mount spells grant innate riding capability
+        if (playerRiding == 0)
+        {
+            if (requiredRidingRank <= RIDING_SKILL_APPRENTICE && (player->HasSpell(13819u) || player->HasSpell(5784u)))
+                playerRiding = RIDING_SKILL_APPRENTICE;
+            else if (requiredRidingRank >= RIDING_SKILL_JOURNEYMAN && (player->HasSpell(23214u) || player->HasSpell(23161u)))
+                playerRiding = RIDING_SKILL_JOURNEYMAN;
+        }
+
+        if (playerRiding < requiredRidingRank)
             return false;
     }
 
     return true;
+}
+
+uint32 CollectionsMgr::CleanseInvalidMounts(Player* player)
+{
+    if (!player)
+        return 0;
+
+    uint32 cleansedCount = 0;
+    for (auto const& [spellId, itemId] : m_spellToMountItem)
+    {
+        if (player->HasSpell(spellId))
+        {
+            if (!CanPlayerAddMountToSpellbook(player, spellId))
+            {
+                player->RemoveSpell(spellId, false, false);
+                ++cleansedCount;
+            }
+        }
+    }
+
+    return cleansedCount;
 }
 
 void CollectionsMgr::ScanKnownSpells(Player* player)
@@ -319,22 +590,17 @@ void CollectionsMgr::ScanKnownSpells(Player* player)
     if (!player || !player->GetSession())
         return;
 
-    for (auto const& [spellId, itemId] : m_spellToMountItem)
+    for (auto const& [spellId, playerSpell] : player->GetSpellMap())
     {
-        if (player->HasSpell(spellId))
-            AddToAccountCollection(player, COLLECTION_TYPE_MOUNT, itemId, spellId);
-    }
+        if (playerSpell.state == PLAYERSPELL_REMOVED)
+            continue;
 
-    for (auto const& [spellId, itemId] : m_spellToPetItem)
-    {
-        if (player->HasSpell(spellId))
-            AddToAccountCollection(player, COLLECTION_TYPE_PET, itemId, spellId);
-    }
-
-    for (auto const& [spellId, itemId] : m_spellToToyItem)
-    {
-        if (player->HasSpell(spellId))
-            AddToAccountCollection(player, COLLECTION_TYPE_TOY, itemId, spellId);
+        uint32 itemId = 0;
+        CollectionType type = GetCollectionTypeBySpell(spellId, itemId);
+        if (type != COLLECTION_TYPE_NONE)
+        {
+            AddToAccountCollection(player, type, itemId, spellId);
+        }
     }
 }
 
@@ -345,6 +611,12 @@ void CollectionsMgr::SyncPlayerSpells(Player* player)
 
     if (player->GetSession()->IsHeadless())
         return;
+
+    thread_local bool isSyncing = false;
+    if (isSyncing)
+        return;
+
+    isSyncing = true;
 
     uint32 accountId = player->GetSession()->GetAccountId();
     std::vector<CollectionEntry> entries = GetAccountEntries(accountId);
@@ -363,13 +635,19 @@ void CollectionsMgr::SyncPlayerSpells(Player* player)
         }
         else if (entry.type == COLLECTION_TYPE_MOUNT && sCollectionsConfig.IsAccountMountsEnabled() && sCollectionsConfig.IsMountAutoLearnEnabled())
         {
-            if (CanPlayerLearnMount(player, entry.spellId))
+            bool canTeach = sCollectionsConfig.IsShowInSpellbookAtLowLevel()
+                ? CanPlayerAddMountToSpellbook(player, entry.spellId)
+                : CanPlayerRideMount(player, entry.spellId);
+
+            if (canTeach)
             {
                 if (!player->HasSpell(entry.spellId))
                     player->LearnSpell(entry.spellId, false);
             }
         }
     }
+
+    isSyncing = false;
 }
 
 void CollectionsMgr::ScanAndImportCharacterInventory(Player* player, ChatHandler* handler)
@@ -423,7 +701,12 @@ void CollectionsMgr::ScanAndImportCharacterInventory(Player* player, ChatHandler
                 ++importedCount;
                 if (!player->HasSpell(spellId))
                 {
-                    if (type != COLLECTION_TYPE_MOUNT || CanPlayerLearnMount(player, spellId))
+                    bool canTeach = (type != COLLECTION_TYPE_MOUNT) ||
+                        (sCollectionsConfig.IsShowInSpellbookAtLowLevel()
+                            ? CanPlayerAddMountToSpellbook(player, spellId)
+                            : CanPlayerRideMount(player, spellId));
+
+                    if (canTeach)
                         player->LearnSpell(spellId, false);
                 }
 
@@ -489,10 +772,13 @@ void CollectionsMgr::SendAddonSync(Player* player, CollectionType type)
     std::string chunk;
     for (size_t i = 0; i < entries.size(); ++i)
     {
-        // If low level display is disabled, filter out mounts the player cannot yet ride
-        if (entries[i].type == COLLECTION_TYPE_MOUNT && !sCollectionsConfig.IsShowMountsToLowLevel())
+        if (entries[i].type == COLLECTION_TYPE_MOUNT)
         {
-            if (!CanPlayerLearnMount(player, entries[i].spellId))
+            if (!CanPlayerAddMountToSpellbook(player, entries[i].spellId))
+                continue;
+
+            // If low level display is disabled in addon browser, filter out mounts player cannot yet ride
+            if (!sCollectionsConfig.IsShowMountsToLowLevel() && !CanPlayerRideMount(player, entries[i].spellId))
                 continue;
         }
 

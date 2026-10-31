@@ -4,68 +4,165 @@
 # Account-Wide Vanity Toybox, Mounts & Pets Collection System
 ###################################################################################################
 
+# =================================================================================================
+# 1. MASTER CONTROLS & GENERAL SETTINGS
+# =================================================================================================
+
 # Enable or disable the collections module entirely.
-# Default: 1 (Enabled)
+# 1 = Enabled (Default)
+# 0 = Disabled
 Collections.Enable = 1
 
+# Enable verbose module console logging during startup and collection loading.
+# 1 = Enabled (Default)
+# 0 = Disabled
+Collections.Logging = 1
+
+
+# =================================================================================================
+# 2. ACCOUNT-WIDE PROGRESSION MODULES
+# =================================================================================================
+
 # Enable Account-Wide Mount Sharing across all characters on the account.
-# Default: 1 (Enabled)
+# 1 = Enabled (Default)
+# 0 = Disabled
 Collections.AccountWide.Mounts = 1
 
 # Enable Account-Wide Vanity / Companion Pet Sharing across all characters on the account.
-# Default: 1 (Enabled)
+# 1 = Enabled (Default)
+# 0 = Disabled
 Collections.AccountWide.Pets = 1
 
 # Enable Account-Wide Novelty Toy Sharing across all characters on the account.
-# Default: 1 (Enabled)
+# 1 = Enabled (Default)
+# 0 = Disabled
 Collections.AccountWide.Toys = 1
 
-# Automatically teach unlocked account mounts upon character login once prerequisites are met.
-# (If enabled, characters on the account learn eligible mount spells into spellbook when meeting level and riding skill).
-# Default: 1 (Enabled)
-Collections.Mounts.AutoLearnOnLogin = 1
 
-# Allow low-level characters to view all unlocked account mounts in the collection browser.
-# 1 = Show unlocked account mounts in browser to low-level characters (Default)
-# 0 = Only display mounts the current character meets level requirements to ride
-# Default: 1
+# =================================================================================================
+# 3. MOUNT VISIBILITY & SPELLBOOK DISTRIBUTION
+# =================================================================================================
+
+# Allow low-level characters to view all unlocked account mounts in the client AddOn collection browser (/collection).
+# NOTE: This setting controls the client AddOn browser window UI, NOT the native game spellbook.
+# 1 = Show unlocked account mounts in client AddOn browser to low-level characters (Default)
+# 0 = Only display mounts in client AddOn browser that the current character meets level requirements to ride
 Collections.Mounts.ShowToLowLevel = 1
 
-# Check level requirements before allowing a character to summon / ride mounts.
-# (e.g. Level 40 for 60% mounts, Level 60 for 100% epic mounts)
-# 1 = Enforce level: low level characters cannot summon/ride mount until reaching required level (Default)
-# 0 = Allow summoning/riding mounts at any level (e.g. level 1 characters can still use the mounts)
-# Default: 1
+# Show unlocked account mounts in the character's native game spellbook (P key) even at low level.
+# NOTE: This setting controls the default WoW spellbook (General tab), NOT the client AddOn window.
+# When enabled (Default), low-level alts see all eligible account mounts in their spellbook,
+# but can ONLY summon/ride them once they acquire the required level and riding skill rank.
+# If they attempt to cast an unearned mount, the cast is canceled with an informative error.
+# 1 = Low-level characters have eligible account mounts in spellbook (Default)
+# 0 = Mounts are only added to spellbook after character trains riding skill and reaches level
+Collections.Mounts.ShowInSpellbookAtLowLevel = 1
+
+# Automatically teach unlocked account mounts upon character login.
+# (If ShowInSpellbookAtLowLevel is 1, teaches all eligible mounts to spellbook on login.
+# If ShowInSpellbookAtLowLevel is 0, only teaches mounts once level and riding skill are met).
+# 1 = Enabled (Default)
+# 0 = Disabled
+Collections.Mounts.AutoLearnOnLogin = 1
+
+
+# =================================================================================================
+# 4. LEVEL & RIDING SKILL ENFORCEMENT (DUAL-TIER)
+# =================================================================================================
+
+# Check character level requirements before allowing a character to summon / ride mounts.
+# (e.g. Level 40 for 60% speed mounts, Level 60 for 100% epic mounts, Level 18 for Riding Turtle)
+# 1 = Enforce level: characters cannot summon/ride mount until reaching required level (Default)
+# 0 = Allow summoning/riding mounts at any level (e.g. level 1 characters can ride)
 Collections.Mounts.EnforceLevelRequirements = 1
 
 # Check riding skill requirements before allowing a character to summon / ride mounts.
-# 1 = Enforce riding skill: characters cannot summon/ride mounts until learning required riding skill from trainer (Default)
-# 0 = Allow summoning/riding mounts without purchasing riding skill (e.g. level 1 characters can still use the mounts)
-# Default: 1
+# Dual-tier verification:
+#   - Apprentice Riding (rank 75) required for 60% standard mounts.
+#   - Journeyman Riding (rank 150) required for 100% epic mounts.
+# Level 60 characters with Apprentice Riding (75) cannot ride epic mounts until training rank 150.
+# 1 = Enforce riding skill: characters cannot summon/ride mounts without required rank (Default)
+# 0 = Allow summoning/riding mounts without purchasing riding skill
 Collections.Mounts.EnforceRidingSkill = 1
 
+# Skip Riding-skill and level gating entirely. When enabled, every shared mount can be
+# ridden regardless of character level or Riding skill.
+# 1 = Bypass all level and riding skill requirements (fun / instant ride mode)
+# 0 = Enforce standard requirements (Default)
+Collections.Mounts.AllowAllMounts = 0
+
+
+# =================================================================================================
+# 5. CLASS & FACTION BOUNDARIES
+# =================================================================================================
+
+# Limit class-specific mounts?
+# When enabled, mounts with class restrictions (e.g. Paladin Warhorse/Charger, Warlock
+# Felsteed/Dreadsteed) can ONLY be learned and summoned by characters of that specific class.
+# 1 = Enforce class restriction (Default)
+# 0 = Allow any class to learn class-specific mounts across the account
+Collections.Mounts.LimitClass = 1
+
+# Limit faction / race-specific mounts?
+# When enabled, racial mounts respect faction boundaries (Alliance characters do not
+# automatically receive Horde racial mounts like Wolves/Kodos, and vice versa).
+# Non-racial mounts (e.g. Rivendare's Deathcharger, Zulian Tiger, Turtle) remain shared.
+# 1 = Enforce faction boundaries
+# 0 = Allow cross-faction sharing of racial mounts across the account (Default)
+Collections.Mounts.LimitRace = 0
+
+
+# =================================================================================================
+# 6. MOUNT EXCLUSIONS & MANUAL TIER OVERRIDES
+# =================================================================================================
+
+# Excluded Mount Spell IDs (comma-separated, no spaces).
+# Any spell ID in this list will be completely excluded from account-wide sharing.
+# Example: Collections.Mounts.ExcludedSpellIDs = 470,578,6777
+# Default: 0 (None)
+Collections.Mounts.ExcludedSpellIDs = 0
+
+# Override list of mount spell IDs that are always treated as epic (Journeyman Riding 150),
+# regardless of automatic DBC or item detection. Comma-separated, no spaces.
+# Default: 0 (Automatic)
+Collections.Mounts.EpicSpellIDs = 0
+
+# Override list of mount spell IDs that are always treated as normal (Apprentice Riding 75),
+# regardless of automatic DBC or item detection. Comma-separated, no spaces.
+# Default: 0 (Automatic)
+Collections.Mounts.NormalSpellIDs = 0
+
+
+# =================================================================================================
+# 7. COMPANION PETS & VANITY NOVELTIES
+# =================================================================================================
+
 # Automatically teach unlocked account companion pets upon character login.
-# Default: 1 (Enabled)
+# 1 = Enabled (Default)
+# 0 = Disabled
 Collections.Pets.AutoLearnOnLogin = 1
 
-# Automatically teach unlocked account toys upon character login.
-# Default: 1 (Enabled)
+# Automatically teach unlocked account vanity toys upon character login.
+# 1 = Enabled (Default)
+# 0 = Disabled
 Collections.Toys.AutoLearnOnLogin = 1
 
+# Enable critter petting scoring table (tw_char.character_critter_pet).
+# 1 = Enabled (Default)
+# 0 = Disabled
+Collections.CritterPets.Enable = 1
+
+
+# =================================================================================================
+# 8. INVENTORY BAG SPACE SAVER & NOTIFICATIONS
+# =================================================================================================
+
 # Consume physical inventory item when successfully registered to collection.
-# 1 = Destroy physical item to save bag space
+# 1 = Destroy physical item to save bag and bank space (Default)
 # 0 = Keep physical item in bag
-# Default: 1
 Collections.ConsumeItemOnLearn = 1
 
 # Send affirmative chat notification when a collection item is learned.
-# Default: 1 (Enabled)
+# 1 = Enabled (Default)
+# 0 = Disabled
 Collections.AnnounceOnLearn = 1
-
-# Enable critter petting scoring table (tw_char.character_critter_pet).
-# Default: 1 (Enabled)
-Collections.CritterPets.Enable = 1
-
-# Enable verbose module console logging.
-# Default: 1 (Enabled)
-Collections.Logging = 1

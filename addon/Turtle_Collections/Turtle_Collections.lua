@@ -89,33 +89,44 @@ end
 -- Self-whispers to .collection work reliably in solo, party, and guild contexts.
 -- -----------------------------------------------------------------------------
 local function SendServerCommand(payload)
+    local playerName = (UnitName and UnitName("player"))
+    if not playerName or playerName == "" or playerName == "Unknown" then
+        return false
+    end
     if SendChatMessage then
         TC.lastCommandTime = GetTime()
         TC.suppressCommandError = true
-        SendChatMessage(".collection " .. payload, "WHISPER", nil, UnitName("player"))
+        SendChatMessage(".collection " .. payload, "WHISPER", nil, playerName)
+        return true
     end
+    return false
 end
 
-local function RequestCollectionSync()
-    TC.lastSync = GetTime()
-    SendServerCommand("query " .. TC.activeTab)
+local function RequestCollectionSync(force)
+    local now = GetTime()
+    if not force and (now - (TC.lastSync or 0)) < 3 and table.getn(TC.rawEntries) > 0 then
+        return
+    end
+    TC.lastSync = now
+    SendServerCommand("query " .. (TC.activeTab or 1))
 end
 
-local function HasRidingSkill()
+local function GetPlayerRidingSkillRank()
     local numSkills = (GetNumSkillLines and GetNumSkillLines()) or 0
     for i = 1, numSkills do
         local skillName, _, _, skillRank = GetSkillLineInfo(i)
         if skillName and string.find(string.lower(skillName), "riding") then
-            return (skillRank and skillRank > 0)
+            return (skillRank or 0)
         end
     end
     if TC.knownSpells then
-        if TC.knownSpells["Summon Warhorse"] or TC.knownSpells["Summon Charger"] or
-           TC.knownSpells["Summon Felsteed"] or TC.knownSpells["Summon Dreadsteed"] then
-            return true
+        if TC.knownSpells["Summon Charger"] or TC.knownSpells["Summon Dreadsteed"] then
+            return 150
+        elseif TC.knownSpells["Summon Warhorse"] or TC.knownSpells["Summon Felsteed"] then
+            return 75
         end
     end
-    return false
+    return 0
 end
 
 local function GetMountRequiredLevel(item)
@@ -281,12 +292,24 @@ local function UpdateUI()
             if item.type == 1 then -- Mount
                 local charLevel = UnitLevel("player")
                 local reqLevel = GetMountRequiredLevel(item)
-                local hasRiding = HasRidingSkill()
+                local reqRiding = (reqLevel >= 60) and 150 or 75
+                local playerRiding = GetPlayerRidingSkillRank()
+                local hasRiding = (playerRiding >= reqRiding)
                 if item.spellId == 30174 then -- Swift Riding Turtle
                     hasRiding = true
                 end
+
+                -- Class lock check for Paladin / Warlock class mounts
+                local isClassLocked = false
+                local _, playerClass = UnitClass("player")
+                if (item.spellId == 13819 or item.spellId == 23214) and playerClass ~= "PALADIN" then
+                    isClassLocked = true
+                elseif (item.spellId == 5784 or item.spellId == 23161) and playerClass ~= "WARLOCK" then
+                    isClassLocked = true
+                end
+
                 local isKnown = TC.knownSpells and TC.knownSpells[item.name]
-                local canUse = (charLevel >= reqLevel) and hasRiding
+                local canUse = (charLevel >= reqLevel) and hasRiding and (not isClassLocked)
 
                 if actionBtn then
                     actionBtn:Show()
@@ -299,10 +322,16 @@ local function UpdateUI()
                     end
                 end
 
-                if charLevel < reqLevel then
+                if isClassLocked then
+                    statusText:SetText("|cffff2020Class Locked|r")
+                elseif charLevel < reqLevel then
                     statusText:SetText("|cffff8000Req Lvl " .. reqLevel .. "|r")
                 elseif not hasRiding then
-                    statusText:SetText("|cffff8000Req Riding|r")
+                    if reqRiding == 150 then
+                        statusText:SetText("|cffff8000Req Riding 150|r")
+                    else
+                        statusText:SetText("|cffff8000Req Riding 75|r")
+                    end
                 elseif isKnown then
                     statusText:SetText("|cff00ff00Learned|r")
                 else
@@ -508,6 +537,23 @@ end
 -- -----------------------------------------------------------------------------
 -- 7. Network Event Ingress Frame
 -- -----------------------------------------------------------------------------
+local initSyncFrame = CreateFrame("Frame")
+local initSyncElapsed = 0
+local initSyncDone = false
+
+initSyncFrame:SetScript("OnUpdate", function()
+    if initSyncDone then return end
+    initSyncElapsed = initSyncElapsed + (arg1 or 0.1)
+    if initSyncElapsed >= 1.5 then
+        local playerName = (UnitName and UnitName("player"))
+        if playerName and playerName ~= "" and playerName ~= "Unknown" then
+            initSyncDone = true
+            ScanLocalCollections()
+            RequestCollectionSync(true)
+        end
+    end
+end)
+
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -517,7 +563,7 @@ eventFrame:RegisterEvent("CHAT_MSG_ADDON")
 eventFrame:SetScript("OnEvent", function()
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         ScanLocalCollections()
-        RequestCollectionSync()
+        RequestCollectionSync(true)
         UpdateMinimapButtonPosition()
     elseif event == "VARIABLES_LOADED" then
         if not TurtleCollectionsDB then
@@ -582,20 +628,21 @@ function TurtleCollections_Toggle()
         TurtleCollectionsFrame:Show()
         ScanLocalCollections()
         local now = GetTime()
-        if (now - (TC.lastSync or 0)) > 15 then
-            RequestCollectionSync()
+        if table.getn(TC.rawEntries) == 0 or (now - (TC.lastSync or 0)) > 5 then
+            RequestCollectionSync(true)
         end
         UpdateUI()
     end
 end
 
 function TurtleCollections_SetTab(tabId)
+    local prevTab = TC.activeTab
     TC.activeTab = tabId
     TC.currentPage = 1
     ScanLocalCollections()
     local now = GetTime()
-    if (now - (TC.lastSync or 0)) > 15 then
-        RequestCollectionSync()
+    if prevTab ~= tabId or table.getn(TC.rawEntries) == 0 or (now - (TC.lastSync or 0)) > 5 then
+        RequestCollectionSync(true)
     end
     UpdateUI()
 end
