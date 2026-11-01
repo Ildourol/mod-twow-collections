@@ -5,6 +5,7 @@
 #include "Objects/Bag.h"
 #include "Objects/Creature.h"
 #include "Objects/ItemPrototype.h"
+#include "ObjectMgr.h"
 #include "Chat/Chat.h"
 #include "Database/DatabaseEnv.h"
 #include "WorldPacket.h"
